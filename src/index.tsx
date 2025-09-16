@@ -168,7 +168,7 @@ app.post('/api/speech-to-text', async (c) => {
     const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)))
 
     // Call Google Speech-to-Text API
-    const apiKey = c.env.GOOGLE_API_KEY
+    const apiKey = c.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY
     
     if (!apiKey) {
       console.error('Google API key is not configured')
