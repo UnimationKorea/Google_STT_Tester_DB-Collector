@@ -15,15 +15,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Frontend Server"
+args = "Application Server"
 
 [[workflows.workflow]]
-name = "Frontend Server"
+name = "Application Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev"
+args = "npm run build && npm run dev:sandbox"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -31,17 +31,21 @@ outputType = "webview"
 
 [[ports]]
 localPort = 5000
-externalPort = 5000
-
-[[ports]]
-localPort = 5001
 externalPort = 80
 
 [[ports]]
 localPort = 5002
 externalPort = 3000
 
+[[ports]]
+localPort = 33207
+externalPort = 3001
+
+[[ports]]
+localPort = 40897
+externalPort = 3002
+
 [deployment]
 deploymentTarget = "autoscale"
-run = ["npx", "serve", "dist", "-l", "5001"]
+run = ["npm", "run", "start"]
 build = ["npm", "run", "build"]
