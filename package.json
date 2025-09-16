@@ -16,7 +16,8 @@
     "db:console:prod": "wrangler d1 execute stt-tester-db"
   },
   "dependencies": {
-    "hono": "^4.9.7"
+    "hono": "^4.9.7",
+    "serve": "^14.2.5"
   },
   "devDependencies": {
     "@hono/vite-build": "^1.2.0",
