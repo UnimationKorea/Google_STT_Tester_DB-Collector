@@ -717,16 +717,28 @@ function showAddSentenceModal() {
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">난이도</label>
-                        <select id="newSentenceDifficulty" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="easy">쉬움</option>
-                            <option value="medium">보통</option>
-                            <option value="hard">어려움</option>
+                        <label class="block text-sm font-medium text-gray-700">레벨</label>
+                        <select id="newSentenceLevel" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="3A">3A</option>
+                            <option value="4A">4A</option>
+                            <option value="5A">5A</option>
+                            <option value="6A">6A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                            <option value="E">E</option>
+                            <option value="F">F</option>
+                            <option value="G">G</option>
+                            <option value="H">H</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">카테고리</label>
-                        <input id="newSentenceCategory" type="text" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="block text-sm font-medium text-gray-700">세트</label>
+                        <select id="newSentenceSet" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            ${Array.from({length: 20}, (_, i) => i + 1).map(n => 
+                                `<option value="${n}">${n}</option>`
+                            ).join('')}
+                        </select>
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end space-x-3">
@@ -830,8 +842,8 @@ async function saveUser() {
 async function saveSentence() {
     const content = document.getElementById('newSentenceContent').value;
     const type = document.getElementById('newSentenceType').value;
-    const difficulty_level = document.getElementById('newSentenceDifficulty').value;
-    const category = document.getElementById('newSentenceCategory').value;
+    const level = document.getElementById('newSentenceLevel').value;
+    const set_number = parseInt(document.getElementById('newSentenceSet').value);
 
     if (!content) {
         alert('내용을 입력해주세요.');
@@ -842,8 +854,8 @@ async function saveSentence() {
         const response = await axios.post('/api/sentences', {
             content,
             type,
-            difficulty_level,
-            category
+            level,
+            set_number
         });
         if (response.data.success) {
             closeModal('sentenceModal');
