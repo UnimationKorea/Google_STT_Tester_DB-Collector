@@ -1,0 +1,170 @@
+/* Custom styles for STT Tester */
+
+/* Recording button animation */
+.record-button {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.record-button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.record-button.recording {
+    animation: pulse 1.5s infinite;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(245, 87, 108, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 20px rgba(245, 87, 108, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 87, 108, 0);
+    }
+}
+
+/* Section animations */
+.section {
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Loading spinner */
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Table hover effects */
+tbody tr:hover {
+    background-color: #f9fafb;
+}
+
+/* Card hover effects */
+.shadow:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.3s ease;
+}
+
+/* Button hover effects */
+button {
+    transition: all 0.2s ease;
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+/* Modal backdrop */
+.fixed.inset-0 {
+    backdrop-filter: blur(2px);
+}
+
+/* Nav button active state */
+.nav-btn.active {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+/* Success/Error indicators */
+.success-indicator {
+    color: #10b981;
+    animation: checkmark 0.5s ease;
+}
+
+.error-indicator {
+    color: #ef4444;
+    animation: shake 0.5s ease;
+}
+
+@keyframes checkmark {
+    0% {
+        transform: scale(0);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-5px);
+    }
+    75% {
+        transform: translateX(5px);
+    }
+}
+
+/* Chart container */
+canvas {
+    max-height: 300px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    .record-button {
+        width: 100px;
+        height: 100px;
+    }
+    
+    .record-button i {
+        font-size: 2rem !important;
+    }
+}
