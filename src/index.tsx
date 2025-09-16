@@ -168,10 +168,16 @@ app.post('/api/speech-to-text', async (c) => {
     const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)))
 
     // Call Google Speech-to-Text API
+    console.log('Checking API keys:', {
+      cloudflare_env: !!c.env.GOOGLE_API_KEY,
+      process_env: !!process.env.GOOGLE_API_KEY,
+      env_keys: Object.keys(process.env || {}).filter(k => k.includes('GOOGLE'))
+    })
+    
     const apiKey = c.env.GOOGLE_API_KEY || process.env.GOOGLE_API_KEY
     
     if (!apiKey) {
-      console.error('Google API key is not configured')
+      console.error('Google API key is not configured. Available env vars:', Object.keys(process.env || {}))
       return c.json({ success: false, error: 'Google API key is not configured' }, 500)
     }
     
