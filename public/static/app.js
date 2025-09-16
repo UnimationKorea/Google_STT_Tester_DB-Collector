@@ -8,6 +8,116 @@ let selectedSentence = null;
 let recognitionResults = [];
 let statsData = null;
 
+// 오류 상세보기 함수
+async function showErrorDetails(sentenceId, sentenceContent) {
+    try {
+        const response = await axios.get('/api/results', {
+            params: {
+                sentenceId: sentenceId,
+                limit: 1000
+            }
+        });
+        
+        const results = response.data.results.filter(r => !r.is_correct);
+        
+        if (results.length === 0) {
+            alert('해당 문장에 오류 기록이 없습니다.');
+            return;
+        }
+        
+        // 모달 HTML 생성
+        const modalHtml = document.createElement('div');
+        modalHtml.id = 'errorModal';
+        modalHtml.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50';
+        
+        modalHtml.innerHTML = `
+            <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
+                <div class="mt-3">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium text-gray-900">오류 인식 결과 상세보기</h3>
+                        <button onclick="closeErrorModal()" class="text-gray-400 hover:text-gray-600">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="mb-4 p-3 bg-blue-50 rounded">
+                        <p class="text-sm font-medium text-gray-700">대상 문장: <span class="font-bold">${sentenceContent}</span></p>
+                        <p class="text-sm text-gray-600">총 ${results.length}개의 오류 기록</p>
+                    </div>
+                    <div class="max-h-96 overflow-y-auto">
+                        <table class="min-w-full">
+                            <thead class="bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시간</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">사용자</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">잘못 인식된 결과</th>
+                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">신뢰도</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${results.map(r => `
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-2 text-sm text-gray-900">
+                                            ${new Date(r.created_at).toLocaleString('ko-KR')}
+                                        </td>
+                                        <td class="px-4 py-2 text-sm text-gray-900">${r.username || '-'}</td>
+                                        <td class="px-4 py-2 text-sm">
+                                            <span class="text-red-600 font-medium">
+                                                ${r.recognized_text || '(인식 실패)'}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-2 text-sm text-center">
+                                            <span class="px-2 py-1 rounded-full text-xs ${
+                                                (r.confidence_score || 0) >= 0.8 ? 'bg-green-100 text-green-800' :
+                                                (r.confidence_score || 0) >= 0.5 ? 'bg-yellow-100 text-yellow-800' :
+                                                'bg-red-100 text-red-800'
+                                            }">
+                                                ${((r.confidence_score || 0) * 100).toFixed(1)}%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-6 flex justify-end">
+                        <button onclick="closeErrorModal()" class="px-4 py-2 bg-gray-300 text-gray-700 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                            닫기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modalHtml);
+        
+    } catch (error) {
+        console.error('오류 상세정보 로드 실패:', error);
+        alert('오류 상세정보를 불러오는데 실패했습니다.');
+    }
+}
+
+// 오류 상세보기 모달 닫기
+function closeErrorModal() {
+    const modal = document.getElementById('errorModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+// 모든 인식 결과 가져오기 (상세통계용)
+async function loadAllResultsForStats() {
+    try {
+        const response = await axios.get('/api/results', { params: { limit: 1000 } });
+        if (response.data.success) {
+            return response.data.results;
+        }
+        return [];
+    } catch (error) {
+        console.error('Failed to load results for stats:', error);
+        return [];
+    }
+}
+
 // Initialize app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
@@ -54,9 +164,9 @@ function renderMainLayout() {
 
             <!-- Main Content -->
             <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <!-- User Selection and Controls -->
+                <!-- User Selection -->
                 <div class="mb-6 bg-white rounded-lg shadow p-4">
-                    <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center justify-between">
                         <div class="flex items-center space-x-4">
                             <label class="text-sm font-medium text-gray-700">현재 사용자:</label>
                             <select id="userSelect" class="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -65,21 +175,14 @@ function renderMainLayout() {
                             <button onclick="showAddUserModal()" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700">
                                 <i class="fas fa-user-plus mr-1"></i>새 사용자
                             </button>
+                            <button onclick="exportData('results')" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                <i class="fas fa-download mr-1"></i>결과 CSV
+                            </button>
+                            <button onclick="exportData('stats')" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                                <i class="fas fa-download mr-1"></i>통계 CSV
+                            </button>
                         </div>
                         <div id="userInfo" class="text-sm text-gray-600"></div>
-                    </div>
-                    <!-- CSV Download Buttons -->
-                    <div class="flex items-center space-x-3 pt-3 border-t border-gray-200">
-                        <span class="text-sm font-medium text-gray-700">데이터 내보내기:</span>
-                        <button onclick="exportData('results')" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
-                            <i class="fas fa-download mr-1"></i>결과 CSV
-                        </button>
-                        <button onclick="exportData('stats')" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
-                            <i class="fas fa-download mr-1"></i>통계 CSV
-                        </button>
-                        <button onclick="showDetailedStats()" class="px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm">
-                            <i class="fas fa-chart-line mr-1"></i>상세 통계
-                        </button>
                     </div>
                 </div>
 
@@ -139,6 +242,71 @@ function renderRecordingSection() {
                     </button>
                     <p id="recordStatus" class="mt-4 text-gray-600">녹음 준비</p>
                     <div id="recordTimer" class="mt-2 text-2xl font-mono hidden">00:00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Speech Recognition Options -->
+        <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- API Selection -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">
+                    <i class="fas fa-cog text-gray-600 mr-2"></i>
+                    음성 인식 설정
+                </h3>
+                <div class="space-y-4">
+                    <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <label class="flex items-center cursor-pointer">
+                            <input type="checkbox" id="useWebSpeechAPI" class="mr-3 w-4 h-4">
+                            <div>
+                                <span class="font-medium text-gray-700">Web Speech API 사용</span>
+                                <p class="text-xs text-gray-600 mt-1">Chrome/Edge 브라우저에서 즉시 사용 가능</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Google STT Options -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">
+                    <i class="fas fa-sliders-h text-gray-600 mr-2"></i>
+                    Google STT 옵션
+                </h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">언어</label>
+                        <select id="sttLanguage" class="w-full px-3 py-1 border border-gray-300 rounded-md text-sm">
+                            <option value="en-US">English (US)</option>
+                            <option value="en-GB">English (UK)</option>
+                            <option value="ko-KR">한국어</option>
+                            <option value="ja-JP">日本語</option>
+                            <option value="zh-CN">中文(简体)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">모델</label>
+                        <select id="sttModel" class="w-full px-3 py-1 border border-gray-300 rounded-md text-sm">
+                            <option value="latest_long">Latest Long (고품질)</option>
+                            <option value="latest_short">Latest Short (빠름)</option>
+                            <option value="command_and_search">Command & Search</option>
+                            <option value="phone_call">Phone Call</option>
+                            <option value="video">Video</option>
+                            <option value="default">Default</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="flex items-center text-sm">
+                            <input type="checkbox" id="sttPunctuation" class="mr-2" checked>
+                            <span>자동 구두점 추가</span>
+                        </label>
+                    </div>
+                    <div>
+                        <label class="flex items-center text-sm">
+                            <input type="checkbox" id="sttEnhanced" class="mr-2" checked>
+                            <span>향상된 모델 사용 (더 정확)</span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>
@@ -228,21 +396,31 @@ function renderDashboardSection() {
                 </div>
             </div>
 
-            <!-- Detailed Statistics Tables -->
+            <!-- 상세통계 테이블 -->
             <div class="bg-white rounded-lg shadow p-6">
-                <h3 class="text-lg font-semibold mb-4">상세 통계 테이블</h3>
-                <div class="mb-4">
-                    <div class="flex space-x-2">
-                        <button onclick="showDetailedTable('sentence')" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                            문장별 상세 통계
-                        </button>
-                        <button onclick="showDetailedTable('user')" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">
-                            사용자별 상세 통계
-                        </button>
-                    </div>
+                <h3 class="text-lg font-semibold mb-4">문장별 상세 통계</h3>
+                <div id="sentenceStatsTable" class="overflow-x-auto">
+                    <p class="text-gray-500 text-center">데이터 로딩 중...</p>
                 </div>
-                <div id="detailedStatsTable" class="overflow-x-auto">
-                    <p class="text-gray-500 text-center py-4">위 버튼을 클릭하여 상세 통계를 확인하세요</p>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">사용자별 상세 통계</h3>
+                <div id="userStatsTable" class="overflow-x-auto">
+                    <p class="text-gray-500 text-center">데이터 로딩 중...</p>
+                </div>
+            </div>
+
+            <!-- Export Buttons -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">데이터 내보내기</h3>
+                <div class="flex space-x-4">
+                    <button onclick="exportData('results')" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+                        <i class="fas fa-download mr-2"></i>결과 CSV 다운로드
+                    </button>
+                    <button onclick="exportData('stats')" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                        <i class="fas fa-download mr-2"></i>통계 CSV 다운로드
+                    </button>
                 </div>
             </div>
         </div>
@@ -335,6 +513,18 @@ async function toggleRecording() {
         return;
     }
 
+    // Web Speech API 체크
+    const useWebSpeech = document.getElementById('useWebSpeechAPI')?.checked || false;
+    
+    if (useWebSpeech && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        // Web Speech API 직접 사용
+        if (!isRecording) {
+            startWebSpeechRecognition();
+        }
+        return;
+    }
+
+    // 기존 MediaRecorder 방식
     if (!isRecording) {
         startRecording();
     } else {
@@ -342,14 +532,117 @@ async function toggleRecording() {
     }
 }
 
+// Web Speech API 직접 사용
+function startWebSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 3;
+
+    const btn = document.getElementById('recordBtn');
+    const status = document.getElementById('recordStatus');
+    
+    btn.classList.add('recording');
+    btn.innerHTML = '<i class="fas fa-stop text-4xl"></i>';
+    status.textContent = '음성 인식 중...';
+    status.classList.add('text-red-600');
+
+    recognition.start();
+
+    recognition.onresult = async (event) => {
+        const result = event.results[0];
+        const recognizedText = result[0].transcript;
+        const confidence = result[0].confidence || 0.9;
+        
+        const alternatives = [];
+        for (let i = 1; i < result.length && i < 3; i++) {
+            alternatives.push({
+                text: result[i].transcript,
+                confidence: result[i].confidence || 0.5
+            });
+        }
+
+        // UI 원복
+        btn.classList.remove('recording');
+        btn.innerHTML = '<i class="fas fa-microphone text-4xl"></i>';
+        status.textContent = '녹음 준비';
+        status.classList.remove('text-red-600');
+
+        // 결과를 서버에 저장
+        try {
+            showLoadingModal();
+            const response = await axios.post('/api/speech-to-text/web', {
+                userId: currentUser,
+                targetSentenceId: selectedSentence.id,
+                recognizedText: recognizedText,
+                confidence: confidence,
+                alternatives: alternatives,
+                targetText: selectedSentence.content
+            });
+            hideLoadingModal();
+
+            if (response.data.success) {
+                showResultModal(response.data.result);
+                loadResults();
+                loadStats();
+            }
+        } catch (error) {
+            hideLoadingModal();
+            console.error('Failed to save result:', error);
+            alert('결과 저장 실패: ' + error.message);
+        }
+    };
+
+    recognition.onerror = (event) => {
+        btn.classList.remove('recording');
+        btn.innerHTML = '<i class="fas fa-microphone text-4xl"></i>';
+        status.textContent = '녹음 준비';
+        status.classList.remove('text-red-600');
+        
+        console.error('Speech recognition error:', event.error);
+        alert('음성 인식 오류: ' + event.error + '\n\n마이크 권한을 확인해주세요.');
+    };
+
+    recognition.onend = () => {
+        btn.classList.remove('recording');
+        btn.innerHTML = '<i class="fas fa-microphone text-4xl"></i>';
+        status.textContent = '녹음 준비';
+        status.classList.remove('text-red-600');
+    };
+}
+
 async function startRecording() {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                sampleRate: 48000
+            } 
+        });
+        
+        // MediaRecorder 옵션 설정
+        const options = {
+            mimeType: 'audio/webm;codecs=opus'
+        };
+        
+        // mimeType이 지원되는지 확인
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.log('audio/webm;codecs=opus not supported, using default');
+            mediaRecorder = new MediaRecorder(stream);
+        } else {
+            mediaRecorder = new MediaRecorder(stream, options);
+        }
+        
         audioChunks = [];
 
         mediaRecorder.ondataavailable = (event) => {
-            audioChunks.push(event.data);
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
         };
 
         mediaRecorder.onstop = async () => {
@@ -379,32 +672,116 @@ function stopRecording() {
 
 async function sendAudioToServer(audioBlob) {
     try {
-        const formData = new FormData();
-        formData.append('audio', audioBlob, 'recording.webm');
-        formData.append('userId', currentUser);
-        formData.append('targetSentenceId', selectedSentence.id);
-        formData.append('language', 'en-US');
-
-        showLoadingModal();
-
-        const response = await axios.post('/api/speech-to-text', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
-
-        hideLoadingModal();
-
-        if (response.data.success) {
-            showResultModal(response.data.result);
-            loadResults();
-            loadStats();
+        // Web Speech API 사용 여부 확인
+        const useWebSpeechAPI = document.getElementById('useWebSpeechAPI')?.checked || false;
+        
+        if (useWebSpeechAPI && 'webkitSpeechRecognition' in window) {
+            // Web Speech API 사용
+            useWebSpeechRecognition();
         } else {
-            alert('음성 인식 실패: ' + response.data.error);
+            // Google Cloud API 사용 with options
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.webm');
+            formData.append('userId', currentUser);
+            formData.append('targetSentenceId', selectedSentence.id);
+            
+            // Get Google STT options
+            const language = document.getElementById('sttLanguage')?.value || 'en-US';
+            const model = document.getElementById('sttModel')?.value || 'latest_long';
+            const punctuation = document.getElementById('sttPunctuation')?.checked !== false;
+            const enhanced = document.getElementById('sttEnhanced')?.checked !== false;
+            
+            formData.append('language', language);
+            formData.append('model', model);
+            formData.append('punctuation', punctuation);
+            formData.append('enhanced', enhanced);
+
+            showLoadingModal();
+
+            const response = await axios.post('/api/speech-to-text', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            hideLoadingModal();
+
+            if (response.data.success) {
+                showResultModal(response.data.result);
+                loadResults();
+                loadStats();
+            } else {
+                console.error('API Error details:', response.data);
+                alert('음성 인식 실패: ' + response.data.error + '\n\n' + 
+                      '해결 방법:\n' +
+                      '1. Google Cloud Console에서 Speech-to-Text API 활성화\n' +
+                      '2. 몇 분 기다린 후 다시 시도\n' +
+                      '3. 또는 Web Speech API 옵션 사용 (Chrome/Edge)');
+            }
         }
     } catch (error) {
         hideLoadingModal();
         console.error('Failed to send audio:', error);
-        alert('서버 오류가 발생했습니다.');
+        alert('서버 오류가 발생했습니다.\n' + error.message);
     }
+}
+
+// Web Speech API를 사용한 음성 인식
+function useWebSpeechRecognition() {
+    const recognition = new (window.webkitSpeechRecognition || window.SpeechRecognition)();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 3;
+
+    showLoadingModal();
+
+    recognition.onresult = async (event) => {
+        hideLoadingModal();
+        
+        const result = event.results[0];
+        const recognizedText = result[0].transcript;
+        const confidence = result[0].confidence || 0.9;
+        
+        const alternatives = [];
+        for (let i = 1; i < result.length && i < 3; i++) {
+            alternatives.push({
+                text: result[i].transcript,
+                confidence: result[i].confidence || 0.5
+            });
+        }
+
+        // 결과를 서버에 저장
+        try {
+            const response = await axios.post('/api/speech-to-text/web', {
+                userId: currentUser,
+                targetSentenceId: selectedSentence.id,
+                recognizedText: recognizedText,
+                confidence: confidence,
+                alternatives: alternatives,
+                targetText: selectedSentence.content
+            });
+
+            if (response.data.success) {
+                showResultModal(response.data.result);
+                loadResults();
+                loadStats();
+            }
+        } catch (error) {
+            console.error('Failed to save result:', error);
+        }
+    };
+
+    recognition.onerror = (event) => {
+        hideLoadingModal();
+        console.error('Speech recognition error:', event.error);
+        alert('음성 인식 오류: ' + event.error + '\n\n브라우저 마이크 권한을 확인해주세요.');
+    };
+
+    recognition.onend = () => {
+        hideLoadingModal();
+    };
+
+    // 새로운 녹음 시작
+    recognition.start();
 }
 
 // ==================== UI Update Functions ====================
@@ -429,18 +806,11 @@ function updateSentenceSelect() {
     const select = document.getElementById('sentenceSelect');
     if (!select) return;
     
-    // Sort sentences by level, then set, then content
-    const sortedSentences = [...sentences].sort((a, b) => {
-        if (a.level !== b.level) return a.level.localeCompare(b.level);
-        if (a.set_number !== b.set_number) return a.set_number - b.set_number;
-        return a.content.localeCompare(b.content);
-    });
-    
     select.innerHTML = '<option value="">문장을 선택하세요</option>';
-    sortedSentences.forEach(sentence => {
+    sentences.forEach(sentence => {
         const option = document.createElement('option');
         option.value = sentence.id;
-        option.textContent = `[${sentence.level}${sentence.set_number}] ${sentence.content} (${sentence.type === 'word' ? '단어' : '문장'})`;
+        option.textContent = `[${sentence.type === 'word' ? '단어' : '문장'}] ${sentence.content} (${sentence.difficulty_level})`;
         select.appendChild(option);
     });
 }
@@ -454,37 +824,23 @@ function updateSentencesList() {
         return;
     }
 
-    // Sort sentences by level, then set, then content, then type
-    const sortedSentences = [...sentences].sort((a, b) => {
-        if (a.level !== b.level) return a.level.localeCompare(b.level);
-        if (a.set_number !== b.set_number) return a.set_number - b.set_number;
-        if (a.content !== b.content) return a.content.localeCompare(b.content);
-        return a.type.localeCompare(b.type);
-    });
-
     const table = `
         <table class="min-w-full">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">레벨</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">세트</th>
                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">내용</th>
                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">타입</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">액션</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">난이도</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">카테고리</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-                ${sortedSentences.map(s => `
+                ${sentences.map(s => `
                     <tr>
-                        <td class="px-4 py-2 text-sm font-medium">${s.level}</td>
-                        <td class="px-4 py-2 text-sm">${s.set_number}</td>
                         <td class="px-4 py-2 text-sm">${s.content}</td>
                         <td class="px-4 py-2 text-sm">${s.type === 'word' ? '단어' : '문장'}</td>
-                        <td class="px-4 py-2 text-sm">
-                            <button onclick="deleteSentence(${s.id})" class="text-red-600 hover:text-red-800" title="삭제">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        </td>
+                        <td class="px-4 py-2 text-sm">${s.difficulty_level}</td>
+                        <td class="px-4 py-2 text-sm">${s.category || '-'}</td>
                     </tr>
                 `).join('')}
             </tbody>
@@ -497,23 +853,23 @@ function updateRecentResults() {
     const container = document.getElementById('recentResults');
     if (!container) return;
 
-    // Filter to show only incorrect results (errors)
+    // 오류 결과만 필터링
     const errorResults = recognitionResults.filter(r => !r.is_correct);
 
     if (errorResults.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-center py-4">오류가 없습니다. 모든 인식이 정확합니다!</p>';
+        container.innerHTML = '<p class="text-gray-500 text-center py-4">오류 결과가 없습니다 (모두 정답)</p>';
         return;
     }
 
     const table = `
         <table class="min-w-full">
-            <thead class="bg-red-50">
+            <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">시간</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">사용자</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">원본</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">인식 결과 (오류)</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">신뢰도</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시간</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">사용자</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">원본</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">잘못 인식된 결과</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">신뢰도</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
@@ -521,8 +877,8 @@ function updateRecentResults() {
                     <tr class="bg-red-50">
                         <td class="px-4 py-2 text-sm">${new Date(r.created_at).toLocaleString('ko-KR')}</td>
                         <td class="px-4 py-2 text-sm">${r.username || '-'}</td>
-                        <td class="px-4 py-2 text-sm font-medium text-green-700">${r.target_text}</td>
-                        <td class="px-4 py-2 text-sm font-medium text-red-700">${r.recognized_text || '인식 실패'}</td>
+                        <td class="px-4 py-2 text-sm font-medium">${r.target_text}</td>
+                        <td class="px-4 py-2 text-sm text-red-600">${r.recognized_text || '(인식 실패)'}</td>
                         <td class="px-4 py-2 text-sm">${(r.confidence_score * 100).toFixed(1)}%</td>
                     </tr>
                 `).join('')}
@@ -596,6 +952,10 @@ function updateDashboard(sentenceStats, hourStats, userStats) {
     // Update charts
     updateSentenceChart(sentenceStats);
     updateHourChart(hourStats);
+    
+    // Update tables
+    updateSentenceStatsTable(sentenceStats);
+    updateUserStatsTable(userStats);
 }
 
 function updateSentenceChart(stats) {
@@ -665,6 +1025,150 @@ function updateHourChart(stats) {
     });
 }
 
+// 문장별 상세 통계 테이블 업데이트
+async function updateSentenceStatsTable(stats) {
+    const container = document.getElementById('sentenceStatsTable');
+    if (!container) return;
+    
+    // 정답률 높은 순서로 정렬
+    const sortedStats = stats
+        .filter(s => s.total_attempts > 0)
+        .sort((a, b) => (b.accuracy_rate || 0) - (a.accuracy_rate || 0));
+    
+    if (sortedStats.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center">데이터가 없습니다</p>';
+        return;
+    }
+
+    // 모든 인식 결과를 가져와서 오류 결과 분석
+    const allResults = await loadAllResultsForStats();
+    
+    const table = `
+        <table class="min-w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">레벨</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">세트</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">문장</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">시도</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">정답률</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">신뢰도</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">사용자</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">오류 인식결과</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                ${sortedStats.map(s => {
+                    const sentenceResults = allResults.filter(r => r.sentence_content === s.content);
+                    const errorResults = sentenceResults.filter(r => !r.is_correct);
+                    const errorTexts = [...new Set(errorResults.map(r => r.recognized_text || '인식실패'))].slice(0, 3);
+                    const sentenceId = s.sentence_id || (sentenceResults.length > 0 ? sentenceResults[0].target_sentence_id : null);
+                    
+                    return `
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium">${s.level || 'B'}</td>
+                            <td class="px-3 py-2 text-sm">${s.set_number || '1'}</td>
+                            <td class="px-3 py-2 text-sm">${s.content}</td>
+                            <td class="px-3 py-2 text-sm text-center">${s.total_attempts || 0}</td>
+                            <td class="px-3 py-2 text-sm text-center">
+                                <span class="px-2 py-1 rounded text-xs font-medium ${
+                                    (s.accuracy_rate || 0) >= 0.8 ? 'bg-green-100 text-green-800' :
+                                    (s.accuracy_rate || 0) >= 0.5 ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-red-100 text-red-800'
+                                }">
+                                    ${((s.accuracy_rate || 0) * 100).toFixed(1)}%
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 text-sm text-center">${((s.avg_confidence || 0) * 100).toFixed(1)}%</td>
+                            <td class="px-3 py-2 text-sm text-center">${s.user_count || 0}</td>
+                            <td class="px-3 py-2 text-sm">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-red-600 text-xs">
+                                        ${errorTexts.length > 0 ? errorTexts.join(', ') : '-'}
+                                        ${errorTexts.length >= 3 ? '...' : ''}
+                                    </span>
+                                    ${errorResults.length > 0 && sentenceId ? `
+                                        <button 
+                                            onclick="showErrorDetails(${sentenceId}, '${s.content.replace(/'/g, '&apos;')}')" 
+                                            class="px-2 py-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 rounded transition-colors"
+                                        >
+                                            상세보기 (${errorResults.length})
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+    container.innerHTML = table;
+}
+
+// 사용자별 상세 통계 테이블 업데이트
+async function updateUserStatsTable(stats) {
+    const container = document.getElementById('userStatsTable');
+    if (!container) return;
+    
+    if (stats.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center">데이터가 없습니다</p>';
+        return;
+    }
+
+    // 모든 인식 결과를 가져와서 최근 오류 분석
+    const allResults = await loadAllResultsForStats();
+    
+    const table = `
+        <table class="min-w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">사용자</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">나이</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">성별</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">전체 시도</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">정답률</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">평균 신뢰도</th>
+                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">최근 오류</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                ${stats.map(s => {
+                    const userResults = allResults.filter(r => r.username === s.username);
+                    const recentErrors = userResults
+                        .filter(r => !r.is_correct)
+                        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                        .slice(0, 3)
+                        .map(r => r.recognized_text || '인식실패');
+                    
+                    return `
+                        <tr>
+                            <td class="px-3 py-2 text-sm">${s.username || '-'}</td>
+                            <td class="px-3 py-2 text-sm text-center">${s.age || '-'}</td>
+                            <td class="px-3 py-2 text-sm text-center">${s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '기타'}</td>
+                            <td class="px-3 py-2 text-sm text-center">${s.total_attempts || 0}</td>
+                            <td class="px-3 py-2 text-sm text-center">
+                                <span class="px-2 py-1 rounded text-xs font-medium ${
+                                    (s.accuracy_rate || 0) >= 0.8 ? 'bg-green-100 text-green-800' :
+                                    (s.accuracy_rate || 0) >= 0.5 ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-red-100 text-red-800'
+                                }">
+                                    ${((s.accuracy_rate || 0) * 100).toFixed(1)}%
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 text-sm text-center">${((s.avg_confidence || 0) * 100).toFixed(1)}%</td>
+                            <td class="px-3 py-2 text-sm text-red-600 text-xs">
+                                ${recentErrors.length > 0 ? recentErrors.join(', ') : '-'}
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+    container.innerHTML = table;
+}
+
 // ==================== Modal Functions ====================
 function showAddUserModal() {
     const modal = `
@@ -717,28 +1221,16 @@ function showAddSentenceModal() {
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">레벨</label>
-                        <select id="newSentenceLevel" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="3A">3A</option>
-                            <option value="4A">4A</option>
-                            <option value="5A">5A</option>
-                            <option value="6A">6A</option>
-                            <option value="B">B</option>
-                            <option value="C">C</option>
-                            <option value="D">D</option>
-                            <option value="E">E</option>
-                            <option value="F">F</option>
-                            <option value="G">G</option>
-                            <option value="H">H</option>
+                        <label class="block text-sm font-medium text-gray-700">난이도</label>
+                        <select id="newSentenceDifficulty" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="easy">쉬움</option>
+                            <option value="medium">보통</option>
+                            <option value="hard">어려움</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">세트</label>
-                        <select id="newSentenceSet" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            ${Array.from({length: 20}, (_, i) => i + 1).map(n => 
-                                `<option value="${n}">${n}</option>`
-                            ).join('')}
-                        </select>
+                        <label class="block text-sm font-medium text-gray-700">카테고리</label>
+                        <input id="newSentenceCategory" type="text" class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end space-x-3">
@@ -842,8 +1334,8 @@ async function saveUser() {
 async function saveSentence() {
     const content = document.getElementById('newSentenceContent').value;
     const type = document.getElementById('newSentenceType').value;
-    const level = document.getElementById('newSentenceLevel').value;
-    const set_number = parseInt(document.getElementById('newSentenceSet').value);
+    const difficulty_level = document.getElementById('newSentenceDifficulty').value;
+    const category = document.getElementById('newSentenceCategory').value;
 
     if (!content) {
         alert('내용을 입력해주세요.');
@@ -854,8 +1346,8 @@ async function saveSentence() {
         const response = await axios.post('/api/sentences', {
             content,
             type,
-            level,
-            set_number
+            difficulty_level,
+            category
         });
         if (response.data.success) {
             closeModal('sentenceModal');
@@ -868,189 +1360,32 @@ async function saveSentence() {
     }
 }
 
-// ==================== Delete Functions ====================
-async function deleteSentence(sentenceId) {
-    if (!confirm('이 문장을 정말 삭제하시겠습니까?')) {
-        return;
-    }
-    
-    try {
-        const response = await axios.delete(`/api/sentences/${sentenceId}`);
-        if (response.data.success) {
-            alert('문장이 삭제되었습니다.');
-            loadSentences();
-        }
-    } catch (error) {
-        console.error('Failed to delete sentence:', error);
-        alert('문장 삭제 실패');
-    }
-}
-
-// ==================== Detailed Statistics Functions ====================
-async function showDetailedStats() {
-    showSection('dashboard');
-    showDetailedTable('sentence');
-}
-
-async function showDetailedTable(type) {
-    const container = document.getElementById('detailedStatsTable');
-    if (!container) return;
-
-    try {
-        container.innerHTML = '<p class="text-gray-500 text-center py-4">로딩 중...</p>';
-        
-        if (type === 'sentence') {
-            const [statsResponse, resultsResponse] = await Promise.all([
-                axios.get('/api/stats', { params: { groupBy: 'sentence' } }),
-                axios.get('/api/results', { params: { limit: 1000 } })
-            ]);
-            
-            const stats = statsResponse.data.stats;
-            const results = resultsResponse.data.results;
-            
-            if (stats.length === 0) {
-                container.innerHTML = '<p class="text-gray-500 text-center py-4">통계 데이터가 없습니다</p>';
-                return;
-            }
-            
-            const table = `
-                <table class="min-w-full">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">레벨</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">세트</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">내용</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">타입</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시도횟수</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답수</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답률</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">평균신뢰도</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">오류 인식결과</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        ${stats.map(s => {
-                            const sentenceResults = results.filter(r => r.sentence_content === s.content);
-                            const errorResults = sentenceResults.filter(r => !r.is_correct);
-                            const errorTexts = [...new Set(errorResults.map(r => r.recognized_text || '인식실패'))].slice(0, 3);
-                            
-                            return `
-                                <tr>
-                                    <td class="px-4 py-2 text-sm font-medium">${s.level || '-'}</td>
-                                    <td class="px-4 py-2 text-sm">${s.set_number || '-'}</td>
-                                    <td class="px-4 py-2 text-sm">${s.content}</td>
-                                    <td class="px-4 py-2 text-sm">${s.type === 'word' ? '단어' : '문장'}</td>
-                                    <td class="px-4 py-2 text-sm">${s.total_attempts || 0}</td>
-                                    <td class="px-4 py-2 text-sm">${s.correct_count || 0}</td>
-                                    <td class="px-4 py-2 text-sm">
-                                        <span class="px-2 py-1 rounded-full text-xs ${
-                                            (s.accuracy_rate || 0) >= 0.8 ? 'bg-green-100 text-green-800' :
-                                            (s.accuracy_rate || 0) >= 0.6 ? 'bg-yellow-100 text-yellow-800' :
-                                            'bg-red-100 text-red-800'
-                                        }">
-                                            ${((s.accuracy_rate || 0) * 100).toFixed(1)}%
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-2 text-sm">${((s.avg_confidence || 0) * 100).toFixed(1)}%</td>
-                                    <td class="px-4 py-2 text-sm text-red-600">
-                                        ${errorTexts.length > 0 ? errorTexts.join(', ') : '-'}
-                                        ${errorTexts.length >= 3 ? '...' : ''}
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            `;
-            container.innerHTML = table;
-            
-        } else if (type === 'user') {
-            const [statsResponse, resultsResponse] = await Promise.all([
-                axios.get('/api/stats', { params: { groupBy: 'user' } }),
-                axios.get('/api/results', { params: { limit: 1000 } })
-            ]);
-            
-            const stats = statsResponse.data.stats;
-            const results = resultsResponse.data.results;
-            
-            if (stats.length === 0) {
-                container.innerHTML = '<p class="text-gray-500 text-center py-4">통계 데이터가 없습니다</p>';
-                return;
-            }
-            
-            const table = `
-                <table class="min-w-full">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">사용자명</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">나이</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">성별</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">총시도횟수</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답수</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답률</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">평균신뢰도</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">최근오류</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        ${stats.map(s => {
-                            const userResults = results.filter(r => r.username === s.username);
-                            const recentErrors = userResults.filter(r => !r.is_correct).slice(0, 2);
-                            
-                            return `
-                                <tr>
-                                    <td class="px-4 py-2 text-sm font-medium">${s.username}</td>
-                                    <td class="px-4 py-2 text-sm">${s.age || '-'}</td>
-                                    <td class="px-4 py-2 text-sm">${s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '기타'}</td>
-                                    <td class="px-4 py-2 text-sm">${s.total_attempts || 0}</td>
-                                    <td class="px-4 py-2 text-sm">${s.correct_count || 0}</td>
-                                    <td class="px-4 py-2 text-sm">
-                                        <span class="px-2 py-1 rounded-full text-xs ${
-                                            (s.accuracy_rate || 0) >= 0.8 ? 'bg-green-100 text-green-800' :
-                                            (s.accuracy_rate || 0) >= 0.6 ? 'bg-yellow-100 text-yellow-800' :
-                                            'bg-red-100 text-red-800'
-                                        }">
-                                            ${((s.accuracy_rate || 0) * 100).toFixed(1)}%
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-2 text-sm">${((s.avg_confidence || 0) * 100).toFixed(1)}%</td>
-                                    <td class="px-4 py-2 text-sm text-red-600">
-                                        ${recentErrors.map(e => 
-                                            `${e.target_text} → ${e.recognized_text || '실패'}`
-                                        ).join('<br>') || '-'}
-                                    </td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            `;
-            container.innerHTML = table;
-        }
-        
-    } catch (error) {
-        console.error('Failed to load detailed stats:', error);
-        container.innerHTML = '<p class="text-red-500 text-center py-4">통계 로딩 실패</p>';
-    }
-}
-
 // ==================== Export Functions ====================
 async function exportData(type) {
     try {
-        const response = await axios.get(`/api/export/csv?type=${type}`, {
-            responseType: 'blob'
-        });
+        // axios 대신 fetch 사용 for better blob handling
+        const response = await fetch(`/api/export/csv?type=${type}`);
         
-        const url = window.URL.createObjectURL(new Blob([response.data]));
+        if (!response.ok) {
+            throw new Error('Export failed');
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
         link.setAttribute('download', `stt-data-${type}-${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
-        link.remove();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        // Success message
+        alert(`${type === 'results' ? '결과' : '통계'} CSV 파일이 다운로드되었습니다.`);
     } catch (error) {
         console.error('Failed to export data:', error);
-        alert('데이터 내보내기 실패');
+        alert('데이터 내보내기 실패: ' + error.message);
     }
 }
 
@@ -1078,8 +1413,9 @@ function setupEventListeners() {
                 <div class="text-center">
                     <p class="text-2xl font-bold text-gray-800 mb-2">${selectedSentence.content}</p>
                     <p class="text-sm text-gray-600">
-                        레벨 ${selectedSentence.level} 세트 ${selectedSentence.set_number} | 
-                        ${selectedSentence.type === 'word' ? '단어' : '문장'}
+                        ${selectedSentence.type === 'word' ? '단어' : '문장'} | 
+                        난이도: ${selectedSentence.difficulty_level} | 
+                        카테고리: ${selectedSentence.category || '없음'}
                     </p>
                 </div>
             `;
