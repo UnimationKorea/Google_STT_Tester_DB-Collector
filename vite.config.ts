@@ -14,6 +14,13 @@ export default defineConfig({
       entry: 'src/index.tsx'
     })
   ],
+  server: {
+    host: '0.0.0.0',
+    port: 5000,
+    hmr: {
+      port: 5001
+    }
+  },
   build: {
     outDir: 'dist',
     rollupOptions: {
