@@ -16,6 +16,7 @@
     "db:console:prod": "wrangler d1 execute stt-tester-db"
   },
   "dependencies": {
+    "@types/node": "^24.5.0",
     "hono": "^4.9.7",
     "serve": "^14.2.5"
   },

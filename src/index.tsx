@@ -494,7 +494,7 @@ app.get('/api/export/csv', async (c) => {
       csvContent = 'Timestamp,Username,Age,Gender,Target Text,Recognized Text,Confidence,Is Correct,Processing Time (ms)\n'
       
       // Add data rows
-      results.results.forEach((row: any) => {
+      results.forEach((row: any) => {
         csvContent += `"${row.created_at}","${row.username || ''}",${row.age || ''},"${row.gender || ''}","${row.target_text}","${row.recognized_text}",${row.confidence_score},${row.is_correct},${row.processing_time}\n`
       })
     } else if (type === 'stats') {
@@ -518,7 +518,7 @@ app.get('/api/export/csv', async (c) => {
       csvContent = 'Content,Type,Difficulty,Total Attempts,Correct Count,Accuracy Rate,Avg Confidence,Expected Variations\n'
       
       // Add data rows
-      results.results.forEach((row: any) => {
+      results.forEach((row: any) => {
         csvContent += `"${row.content}","${row.type}","${row.difficulty_level}",${row.total_attempts || 0},${row.correct_count || 0},${row.accuracy_rate || 0},${row.avg_confidence || 0},"${row.expected_variations || '[]'}"\n`
       })
     }
