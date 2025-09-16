@@ -54,9 +54,9 @@ function renderMainLayout() {
 
             <!-- Main Content -->
             <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <!-- User Selection -->
+                <!-- User Selection and Controls -->
                 <div class="mb-6 bg-white rounded-lg shadow p-4">
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center space-x-4">
                             <label class="text-sm font-medium text-gray-700">현재 사용자:</label>
                             <select id="userSelect" class="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -67,6 +67,19 @@ function renderMainLayout() {
                             </button>
                         </div>
                         <div id="userInfo" class="text-sm text-gray-600"></div>
+                    </div>
+                    <!-- CSV Download Buttons -->
+                    <div class="flex items-center space-x-3 pt-3 border-t border-gray-200">
+                        <span class="text-sm font-medium text-gray-700">데이터 내보내기:</span>
+                        <button onclick="exportData('results')" class="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+                            <i class="fas fa-download mr-1"></i>결과 CSV
+                        </button>
+                        <button onclick="exportData('stats')" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                            <i class="fas fa-download mr-1"></i>통계 CSV
+                        </button>
+                        <button onclick="showDetailedStats()" class="px-3 py-1 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm">
+                            <i class="fas fa-chart-line mr-1"></i>상세 통계
+                        </button>
                     </div>
                 </div>
 
@@ -215,16 +228,21 @@ function renderDashboardSection() {
                 </div>
             </div>
 
-            <!-- Export Buttons -->
+            <!-- Detailed Statistics Tables -->
             <div class="bg-white rounded-lg shadow p-6">
-                <h3 class="text-lg font-semibold mb-4">데이터 내보내기</h3>
-                <div class="flex space-x-4">
-                    <button onclick="exportData('results')" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
-                        <i class="fas fa-download mr-2"></i>결과 CSV 다운로드
-                    </button>
-                    <button onclick="exportData('stats')" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                        <i class="fas fa-download mr-2"></i>통계 CSV 다운로드
-                    </button>
+                <h3 class="text-lg font-semibold mb-4">상세 통계 테이블</h3>
+                <div class="mb-4">
+                    <div class="flex space-x-2">
+                        <button onclick="showDetailedTable('sentence')" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                            문장별 상세 통계
+                        </button>
+                        <button onclick="showDetailedTable('user')" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700">
+                            사용자별 상세 통계
+                        </button>
+                    </div>
+                </div>
+                <div id="detailedStatsTable" class="overflow-x-auto">
+                    <p class="text-gray-500 text-center py-4">위 버튼을 클릭하여 상세 통계를 확인하세요</p>
                 </div>
             </div>
         </div>
@@ -411,11 +429,18 @@ function updateSentenceSelect() {
     const select = document.getElementById('sentenceSelect');
     if (!select) return;
     
+    // Sort sentences by level, then set, then content
+    const sortedSentences = [...sentences].sort((a, b) => {
+        if (a.level !== b.level) return a.level.localeCompare(b.level);
+        if (a.set_number !== b.set_number) return a.set_number - b.set_number;
+        return a.content.localeCompare(b.content);
+    });
+    
     select.innerHTML = '<option value="">문장을 선택하세요</option>';
-    sentences.forEach(sentence => {
+    sortedSentences.forEach(sentence => {
         const option = document.createElement('option');
         option.value = sentence.id;
-        option.textContent = `[${sentence.type === 'word' ? '단어' : '문장'}] ${sentence.content} (${sentence.difficulty_level})`;
+        option.textContent = `[${sentence.level}${sentence.set_number}] ${sentence.content} (${sentence.type === 'word' ? '단어' : '문장'})`;
         select.appendChild(option);
     });
 }
@@ -429,23 +454,37 @@ function updateSentencesList() {
         return;
     }
 
+    // Sort sentences by level, then set, then content, then type
+    const sortedSentences = [...sentences].sort((a, b) => {
+        if (a.level !== b.level) return a.level.localeCompare(b.level);
+        if (a.set_number !== b.set_number) return a.set_number - b.set_number;
+        if (a.content !== b.content) return a.content.localeCompare(b.content);
+        return a.type.localeCompare(b.type);
+    });
+
     const table = `
         <table class="min-w-full">
             <thead class="bg-gray-50">
                 <tr>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">레벨</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">세트</th>
                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">내용</th>
                     <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">타입</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">난이도</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">카테고리</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">액션</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-                ${sentences.map(s => `
+                ${sortedSentences.map(s => `
                     <tr>
+                        <td class="px-4 py-2 text-sm font-medium">${s.level}</td>
+                        <td class="px-4 py-2 text-sm">${s.set_number}</td>
                         <td class="px-4 py-2 text-sm">${s.content}</td>
                         <td class="px-4 py-2 text-sm">${s.type === 'word' ? '단어' : '문장'}</td>
-                        <td class="px-4 py-2 text-sm">${s.difficulty_level}</td>
-                        <td class="px-4 py-2 text-sm">${s.category || '-'}</td>
+                        <td class="px-4 py-2 text-sm">
+                            <button onclick="deleteSentence(${s.id})" class="text-red-600 hover:text-red-800" title="삭제">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </td>
                     </tr>
                 `).join('')}
             </tbody>
@@ -458,35 +497,32 @@ function updateRecentResults() {
     const container = document.getElementById('recentResults');
     if (!container) return;
 
-    if (recognitionResults.length === 0) {
-        container.innerHTML = '<p class="text-gray-500 text-center py-4">결과가 없습니다</p>';
+    // Filter to show only incorrect results (errors)
+    const errorResults = recognitionResults.filter(r => !r.is_correct);
+
+    if (errorResults.length === 0) {
+        container.innerHTML = '<p class="text-gray-500 text-center py-4">오류가 없습니다. 모든 인식이 정확합니다!</p>';
         return;
     }
 
     const table = `
         <table class="min-w-full">
-            <thead class="bg-gray-50">
+            <thead class="bg-red-50">
                 <tr>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시간</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">사용자</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">원본</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">인식 결과</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답</th>
-                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">신뢰도</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">시간</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">사용자</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">원본</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">인식 결과 (오류)</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-red-700 uppercase">신뢰도</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-                ${recognitionResults.map(r => `
-                    <tr>
+                ${errorResults.map(r => `
+                    <tr class="bg-red-50">
                         <td class="px-4 py-2 text-sm">${new Date(r.created_at).toLocaleString('ko-KR')}</td>
                         <td class="px-4 py-2 text-sm">${r.username || '-'}</td>
-                        <td class="px-4 py-2 text-sm">${r.target_text}</td>
-                        <td class="px-4 py-2 text-sm">${r.recognized_text || '-'}</td>
-                        <td class="px-4 py-2 text-sm">
-                            ${r.is_correct 
-                                ? '<span class="text-green-600 font-semibold">O</span>' 
-                                : '<span class="text-red-600 font-semibold">X</span>'}
-                        </td>
+                        <td class="px-4 py-2 text-sm font-medium text-green-700">${r.target_text}</td>
+                        <td class="px-4 py-2 text-sm font-medium text-red-700">${r.recognized_text || '인식 실패'}</td>
                         <td class="px-4 py-2 text-sm">${(r.confidence_score * 100).toFixed(1)}%</td>
                     </tr>
                 `).join('')}
@@ -820,6 +856,172 @@ async function saveSentence() {
     }
 }
 
+// ==================== Delete Functions ====================
+async function deleteSentence(sentenceId) {
+    if (!confirm('이 문장을 정말 삭제하시겠습니까?')) {
+        return;
+    }
+    
+    try {
+        const response = await axios.delete(`/api/sentences/${sentenceId}`);
+        if (response.data.success) {
+            alert('문장이 삭제되었습니다.');
+            loadSentences();
+        }
+    } catch (error) {
+        console.error('Failed to delete sentence:', error);
+        alert('문장 삭제 실패');
+    }
+}
+
+// ==================== Detailed Statistics Functions ====================
+async function showDetailedStats() {
+    showSection('dashboard');
+    showDetailedTable('sentence');
+}
+
+async function showDetailedTable(type) {
+    const container = document.getElementById('detailedStatsTable');
+    if (!container) return;
+
+    try {
+        container.innerHTML = '<p class="text-gray-500 text-center py-4">로딩 중...</p>';
+        
+        if (type === 'sentence') {
+            const [statsResponse, resultsResponse] = await Promise.all([
+                axios.get('/api/stats', { params: { groupBy: 'sentence' } }),
+                axios.get('/api/results', { params: { limit: 1000 } })
+            ]);
+            
+            const stats = statsResponse.data.stats;
+            const results = resultsResponse.data.results;
+            
+            if (stats.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4">통계 데이터가 없습니다</p>';
+                return;
+            }
+            
+            const table = `
+                <table class="min-w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">레벨</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">세트</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">내용</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">타입</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시도횟수</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답수</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답률</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">평균신뢰도</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">오류 인식결과</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        ${stats.map(s => {
+                            const sentenceResults = results.filter(r => r.sentence_content === s.content);
+                            const errorResults = sentenceResults.filter(r => !r.is_correct);
+                            const errorTexts = [...new Set(errorResults.map(r => r.recognized_text || '인식실패'))].slice(0, 3);
+                            
+                            return `
+                                <tr>
+                                    <td class="px-4 py-2 text-sm font-medium">${s.level || '-'}</td>
+                                    <td class="px-4 py-2 text-sm">${s.set_number || '-'}</td>
+                                    <td class="px-4 py-2 text-sm">${s.content}</td>
+                                    <td class="px-4 py-2 text-sm">${s.type === 'word' ? '단어' : '문장'}</td>
+                                    <td class="px-4 py-2 text-sm">${s.total_attempts || 0}</td>
+                                    <td class="px-4 py-2 text-sm">${s.correct_count || 0}</td>
+                                    <td class="px-4 py-2 text-sm">
+                                        <span class="px-2 py-1 rounded-full text-xs ${
+                                            (s.accuracy_rate || 0) >= 0.8 ? 'bg-green-100 text-green-800' :
+                                            (s.accuracy_rate || 0) >= 0.6 ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-red-100 text-red-800'
+                                        }">
+                                            ${((s.accuracy_rate || 0) * 100).toFixed(1)}%
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-2 text-sm">${((s.avg_confidence || 0) * 100).toFixed(1)}%</td>
+                                    <td class="px-4 py-2 text-sm text-red-600">
+                                        ${errorTexts.length > 0 ? errorTexts.join(', ') : '-'}
+                                        ${errorTexts.length >= 3 ? '...' : ''}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+            container.innerHTML = table;
+            
+        } else if (type === 'user') {
+            const [statsResponse, resultsResponse] = await Promise.all([
+                axios.get('/api/stats', { params: { groupBy: 'user' } }),
+                axios.get('/api/results', { params: { limit: 1000 } })
+            ]);
+            
+            const stats = statsResponse.data.stats;
+            const results = resultsResponse.data.results;
+            
+            if (stats.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-4">통계 데이터가 없습니다</p>';
+                return;
+            }
+            
+            const table = `
+                <table class="min-w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">사용자명</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">나이</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">성별</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">총시도횟수</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답수</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">정답률</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">평균신뢰도</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">최근오류</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        ${stats.map(s => {
+                            const userResults = results.filter(r => r.username === s.username);
+                            const recentErrors = userResults.filter(r => !r.is_correct).slice(0, 2);
+                            
+                            return `
+                                <tr>
+                                    <td class="px-4 py-2 text-sm font-medium">${s.username}</td>
+                                    <td class="px-4 py-2 text-sm">${s.age || '-'}</td>
+                                    <td class="px-4 py-2 text-sm">${s.gender === 'male' ? '남' : s.gender === 'female' ? '여' : '기타'}</td>
+                                    <td class="px-4 py-2 text-sm">${s.total_attempts || 0}</td>
+                                    <td class="px-4 py-2 text-sm">${s.correct_count || 0}</td>
+                                    <td class="px-4 py-2 text-sm">
+                                        <span class="px-2 py-1 rounded-full text-xs ${
+                                            (s.accuracy_rate || 0) >= 0.8 ? 'bg-green-100 text-green-800' :
+                                            (s.accuracy_rate || 0) >= 0.6 ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-red-100 text-red-800'
+                                        }">
+                                            ${((s.accuracy_rate || 0) * 100).toFixed(1)}%
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-2 text-sm">${((s.avg_confidence || 0) * 100).toFixed(1)}%</td>
+                                    <td class="px-4 py-2 text-sm text-red-600">
+                                        ${recentErrors.map(e => 
+                                            `${e.target_text} → ${e.recognized_text || '실패'}`
+                                        ).join('<br>') || '-'}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+            container.innerHTML = table;
+        }
+        
+    } catch (error) {
+        console.error('Failed to load detailed stats:', error);
+        container.innerHTML = '<p class="text-red-500 text-center py-4">통계 로딩 실패</p>';
+    }
+}
+
 // ==================== Export Functions ====================
 async function exportData(type) {
     try {
@@ -864,9 +1066,8 @@ function setupEventListeners() {
                 <div class="text-center">
                     <p class="text-2xl font-bold text-gray-800 mb-2">${selectedSentence.content}</p>
                     <p class="text-sm text-gray-600">
-                        ${selectedSentence.type === 'word' ? '단어' : '문장'} | 
-                        난이도: ${selectedSentence.difficulty_level} | 
-                        카테고리: ${selectedSentence.category || '없음'}
+                        레벨 ${selectedSentence.level} 세트 ${selectedSentence.set_number} | 
+                        ${selectedSentence.type === 'word' ? '단어' : '문장'}
                     </p>
                 </div>
             `;
