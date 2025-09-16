@@ -95,8 +95,8 @@ app.post('/api/sentences', async (c) => {
     const variations = expected_variations ? JSON.stringify(expected_variations) : '[]'
     
     const result = await c.env.DB.prepare(
-      'INSERT INTO target_sentences (content, type, level, set_number, expected_variations, difficulty_level, category) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(content, type, level, set_number, variations, 'medium', null).run()
+      'INSERT INTO target_sentences (content, type, level, set_number, expected_variations) VALUES (?, ?, ?, ?, ?)'
+    ).bind(content, type, level, set_number, variations).run()
     
     return c.json({ 
       success: true, 
@@ -175,7 +175,7 @@ app.post('/api/speech-to-text', async (c) => {
       return c.json({ success: false, error: 'Google API key is not configured' }, 500)
     }
     
-    console.log('Using Google API Key:', apiKey.substring(0, 10) + '...')
+    console.log('Google API Key configured successfully')
     console.log('Audio base64 length:', audioBase64.length)
     
     const startTime = Date.now()
@@ -502,7 +502,8 @@ app.get('/api/export/csv', async (c) => {
         SELECT 
           ts.content,
           ts.type,
-          ts.difficulty_level,
+          ts.level,
+          ts.set_number,
           COUNT(DISTINCT rs.id) as total_attempts,
           SUM(CASE WHEN rr.is_correct THEN 1 ELSE 0 END) as correct_count,
           AVG(CASE WHEN rr.is_correct THEN 1.0 ELSE 0.0 END) as accuracy_rate,
@@ -515,11 +516,11 @@ app.get('/api/export/csv', async (c) => {
       `).all()
       
       // Create CSV header
-      csvContent = 'Content,Type,Difficulty,Total Attempts,Correct Count,Accuracy Rate,Avg Confidence,Expected Variations\n'
+      csvContent = 'Content,Type,Level,Set,Total Attempts,Correct Count,Accuracy Rate,Avg Confidence,Expected Variations\n'
       
       // Add data rows
       results.forEach((row: any) => {
-        csvContent += `"${row.content}","${row.type}","${row.difficulty_level}",${row.total_attempts || 0},${row.correct_count || 0},${row.accuracy_rate || 0},${row.avg_confidence || 0},"${row.expected_variations || '[]'}"\n`
+        csvContent += `"${row.content}","${row.type}","${row.level || ''}",${row.set_number || ''},${row.total_attempts || 0},${row.correct_count || 0},${row.accuracy_rate || 0},${row.avg_confidence || 0},"${row.expected_variations || '[]'}"\n`
       })
     }
     
